@@ -3,66 +3,84 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Pain-Psych-AI-Lab 專業版</title>
+    <title>疼痛視覺化專業實驗室</title>
     <style>
-        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #eceff1; margin: 0; padding: 15px; }
-        .card { background: white; max-width: 500px; margin: auto; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; }
+        :root { --primary: #1e88e5; --accent: #d32f2f; --bg: #eceff1; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); margin: 0; padding: 15px; display: flex; justify-content: center; }
+        .card { background: white; max-width: 500px; width: 100%; padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; }
         .hidden { display: none; }
         canvas { border: 2px solid #263238; background: #fff; border-radius: 12px; width: 100%; touch-action: none; cursor: crosshair; }
-        input, select, textarea { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #cfd8dc; border-radius: 8px; box-sizing: border-box; }
-        .controls { display: flex; gap: 10px; margin: 15px 0; }
-        .btn-next { background: #1e88e5; color: white; border: none; padding: 15px; border-radius: 10px; flex: 2; font-weight: bold; cursor: pointer; }
+        input, select, textarea { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #cfd8dc; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        .controls { display: flex; gap: 10px; margin: 15px 0; align-items: center; }
+        .btn-main { background: var(--primary); color: white; border: none; padding: 15px; border-radius: 10px; flex: 2; font-weight: bold; cursor: pointer; font-size: 16px; }
         .btn-clear { background: #78909c; color: white; border: none; padding: 15px; border-radius: 10px; flex: 1; cursor: pointer; }
-        .color-picker { width: 60px; height: 50px; border: 2px solid #78909c; border-radius: 8px; cursor: pointer; }
-        .lv-info { font-size: 20px; color: #d32f2f; font-weight: bold; margin-bottom: 5px; }
+        .color-input { width: 60px; height: 50px; border: 2px solid #78909c; border-radius: 8px; cursor: pointer; padding: 2px; }
+        .lv-info { font-size: 22px; color: var(--accent); font-weight: bold; margin-bottom: 10px; }
+        .required-tag { color: var(--accent); font-size: 13px; text-align: left; display: block; margin-top: -5px; }
     </style>
 </head>
 <body>
 
 <div class="card" id="step1">
-    <h2>疼痛心理實驗室</h2>
-    <input type="text" id="stuId" placeholder="學號 / 受測編號">
+    <h2>疼痛心理實驗數據採集</h2>
+    <p>請填寫基本資料開始實驗</p>
+    <input type="text" id="stuId" placeholder="學號 / 受測者編號 (必填)">
     <select id="gender">
-        <option value="">選擇性別</option>
+        <option value="">選擇性別 (必填)</option>
         <option value="Male">男</option>
         <option value="Female">女</option>
+        <option value="Other">其他</option>
     </select>
-    <input type="number" id="age" placeholder="年齡">
-    <button class="btn-next" style="width:100%" onclick="startExp()">進入實驗</button>
+    <input type="number" id="age" placeholder="年齡 (必填)">
+    <button class="btn-main" style="width:100%" onclick="startExp()">進入實驗系統</button>
 </div>
 
 <div class="card hidden" id="step2">
-    <div class="lv-info" id="status">疼痛等級：1 / 10</div>
+    <div class="lv-info" id="status">當前疼痛等級：1 / 10</div>
     <canvas id="pCanvas" width="400" height="400"></canvas>
     
     <div class="controls">
-        <input type="color" id="color" class="color-picker" value="#ff0000">
-        <button class="btn-clear" onclick="clearC()">清空</button>
-        <button class="btn-next" onclick="saveNext()" id="nextBtn">下一級</button>
+        <input type="color" id="color" class="color-input" value="#ff0000">
+        <button class="btn-clear" onclick="clearC()">清空重畫</button>
+        <button class="btn-main" onclick="saveNext()" id="nextBtn">下一疼痛級別</button>
     </div>
     
-    <textarea id="painDesc" rows="3" placeholder="請描述您的繪圖內容或感受..."></textarea>
+    <span class="required-tag">* 請詳細描述此強度的疼痛感（必填）：</span>
+    <textarea id="painDesc" rows="3" placeholder="例如：像針扎般的刺痛、沈重的壓迫感..."></textarea>
 </div>
 
 <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbw3yCRqcZDV0kpT-_cp4krHOFsUeMsRrdMfan5NhCIJwu90o-TKNmBHe4DeWW11v-432Q/exec"; // 務必替換
+   
+    const API_URL = "https://script.google.com/macros/s/AKfycbxtA5biKeN-n_5b9QsQMvS-rRX2gj74cL64w_Ou9RY1YmcsEq2DV2BUpj_9k6rgPao-/exec"; 
+
     const canvas = document.getElementById('pCanvas');
     const ctx = canvas.getContext('2d');
     
     let currentLv = 1, drawings = [], painting = false;
-    let behavior = { total_strokes: 0, color_changes: 0, start_time: null };
     
-    // --- 新增：路徑追蹤變數 ---
-    let currentPath = []; // 儲存單次筆畫的點
-    let allPathsInLevel = []; // 儲存該等級所有的筆畫
+    // 行為追蹤數據 (Behavioral Summary)
+    let behavior = { 
+        total_strokes: 0, 
+        color_changes: 0, 
+        total_clear_actions: 0,
+        start_time: null 
+    };
+    
+    let currentPath = [];     // 儲存單次筆畫點
+    let allPathsInLevel = []; // 儲存該等級所有筆畫
+    let strokeCount = 0;
 
+    // 啟動實驗
     function startExp() {
-        if(!document.getElementById('stuId').value || !document.getElementById('gender').value) return alert("請填寫完整資料");
+        if(!document.getElementById('stuId').value || !document.getElementById('gender').value || !document.getElementById('age').value) {
+            return alert("請完整填寫基本資料！");
+        }
         document.getElementById('step1').classList.add('hidden');
         document.getElementById('step2').classList.remove('hidden');
         behavior.start_time = Date.now();
     }
 
+    // 獲取座標（適配手機與PC）
     function getPos(e) {
         const r = canvas.getBoundingClientRect();
         const cx = e.clientX || e.touches[0].clientX;
@@ -73,17 +91,25 @@
         };
     }
 
-    // 繪圖與座標紀錄
+    // 監聽顏色變更
+    document.getElementById('color').addEventListener('change', () => {
+        behavior.color_changes++;
+    });
+
+    // 繪圖開始
     const startDrawing = (e) => {
         painting = true;
+        strokeCount++;
         behavior.total_strokes++;
         const p = getPos(e);
         ctx.beginPath();
         ctx.moveTo(p.x, p.y);
+        // 紀錄座標與相對時間 (ms)
         currentPath = [{ x: p.x, y: p.y, t: Date.now() - behavior.start_time }];
         if(e.cancelable) e.preventDefault();
     };
 
+    // 繪圖中
     const draw = (e) => {
         if (!painting) return;
         const p = getPos(e);
@@ -96,6 +122,7 @@
         if(e.cancelable) e.preventDefault();
     };
 
+    // 繪圖結束
     const stopDrawing = () => {
         if (painting) {
             allPathsInLevel.push({
@@ -116,24 +143,28 @@
     function clearC() { 
         ctx.clearRect(0, 0, 400, 400); 
         allPathsInLevel = [];
+        behavior.total_clear_actions++;
     }
 
     async function saveNext() {
         const desc = document.getElementById('painDesc').value.trim();
-        if(!desc) return alert("請填寫描述");
+        if(!desc) return alert("請填寫對此等級的疼痛描述！");
 
         drawings.push({ 
             level: currentLv, 
             image: canvas.toDataURL("image/png"), 
             desc: desc,
-            paths: allPathsInLevel // 存入該等級所有路徑
+            strokes_count: strokeCount,
+            paths: allPathsInLevel // 存入座標序列
         });
 
         if (currentLv < 10) {
             currentLv++;
-            document.getElementById('status').innerText = `疼痛等級：${currentLv} / 10`;
+            document.getElementById('status').innerText = `當前疼痛等級：${currentLv} / 10`;
             document.getElementById('painDesc').value = "";
+            strokeCount = 0;
             clearC();
+            if(currentLv === 10) document.getElementById('nextBtn').innerText = "上傳完整實驗數據";
         } else {
             submitData();
         }
@@ -141,19 +172,38 @@
 
     async function submitData() {
         const btn = document.getElementById('nextBtn');
-        btn.disabled = true; btn.innerText = "傳送中...";
+        btn.disabled = true; 
+        btn.innerText = "同步數據中，請稍候...";
+
+        // 整理行為摘要
+        const finalBehaviorLog = {
+            ...behavior,
+            end_time: Date.now(),
+            total_duration_sec: (Date.now() - behavior.start_time) / 1000,
+            avg_strokes_per_level: behavior.total_strokes / 10
+        };
 
         const payload = {
             student_id: document.getElementById('stuId').value,
             gender: document.getElementById('gender').value,
             age: document.getElementById('age').value,
             drawings: drawings,
-            behavior_log: { ...behavior, end_time: Date.now() }
+            behavior_log: finalBehaviorLog
         };
 
-        await fetch(API_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
-        alert("數據已同步至雲端！");
-        location.reload();
+        try {
+            await fetch(API_URL, { 
+                method: 'POST', 
+                mode: 'no-cors', 
+                body: JSON.stringify(payload) 
+            });
+            alert("數據已成功同步！感謝您參與本次疼痛心理學研究。");
+            location.reload();
+        } catch (e) {
+            alert("提交失敗，請檢查網路連線後重試。");
+            btn.disabled = false;
+            btn.innerText = "重新提交";
+        }
     }
 </script>
 </body>
