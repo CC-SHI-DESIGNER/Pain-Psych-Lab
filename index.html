@@ -3,75 +3,144 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>疼痛視覺化實驗</title>
+    <title>專業疼痛視覺化實驗</title>
     <style>
-        body { font-family: sans-serif; background: #eee; margin: 0; display: flex; justify-content: center; }
-        #app { background: white; width: 100%; max-width: 500px; padding: 20px; text-align: center; min-height: 100vh; }
-        canvas { border: 3px solid #333; background: #fff; border-radius: 10px; width: 100%; touch-action: none; cursor: crosshair; }
-        .lv-title { font-size: 24px; color: #ff4757; font-weight: bold; margin: 15px 0; }
-        .controls { margin: 15px 0; display: flex; justify-content: space-around; align-items: center; }
-        button { padding: 12px 25px; font-size: 16px; cursor: pointer; border-radius: 8px; border: none; background: #3498db; color: white; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #eceff1; margin: 0; padding: 20px; }
+        .card { background: white; max-width: 550px; margin: auto; padding: 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        .hidden { display: none; }
+        canvas { border: 2px solid #263238; background: #fff; border-radius: 12px; width: 100%; touch-action: none; }
+        input, select, textarea { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #cfd8dc; border-radius: 8px; box-sizing: border-box; }
+        button { background: #1e88e5; color: white; border: none; padding: 15px 30px; border-radius: 10px; cursor: pointer; width: 100%; font-size: 16px; font-weight: bold; }
+        .lv-info { font-size: 20px; color: #d32f2f; margin-bottom: 10px; }
     </style>
 </head>
 <body>
-    <div id="app">
-        <div class="lv-title" id="status">疼痛等級：1 / 10</div>
-        <canvas id="pCanvas" width="400" height="400"></canvas>
-        <div class="controls">
-            <input type="color" id="color" value="#ff4757" style="height:45px; width:60px;">
-            <button onclick="clearC()">清除</button>
-            <button id="nextBtn" onclick="saveNext()">下一級</button>
-        </div>
-        <p>請繪製對應等級的痛覺視覺影像</p>
+
+<div class="card" id="step1">
+    <h2>實驗基本資料</h2>
+    <input type="text" id="stuId" placeholder="學號">
+    <select id="gender">
+        <option value="">請選擇性別</option>
+        <option value="Male">男</option>
+        <option value="Female">女</option>
+        <option value="Other">其他</option>
+    </select>
+    <input type="number" id="age" placeholder="年齡">
+    <button onclick="startExp()">開始實驗</button>
+</div>
+
+<div class="card hidden" id="step2">
+    <div class="lv-info" id="status">當前疼痛等級：1 / 10</div>
+    <canvas id="pCanvas" width="400" height="400"></canvas>
+    <div style="margin: 15px 0; display: flex; gap: 10px;">
+        <input type="color" id="color" value="#ff0000" onchange="logColorChange()">
+        <button style="background:#78909c" onclick="clearC()">清空</button>
+        <button onclick="saveNext()" id="nextBtn">下一級</button>
     </div>
+    <textarea id="painDesc" placeholder="請簡單描述此等級的疼痛感（如：像針扎、灼熱感...）"></textarea>
+</div>
 
-    <script>
-        const canvas = document.getElementById('pCanvas');
-        const ctx = canvas.getContext('2d');
-        let currentLv = 1, drawings = [], painting = false;
-        // 【重要】這裡填入你的 Google 部署網址
-        const API_URL = "https://script.google.com/macros/s/AKfycbwZQ6WtBCGMgqxZe9vHCio_XCtagIi13V2lIw9cU_-TMrTpkTCYxt1DdIrF5KvIEfLBoQ/exec"; 
+<script>
+    const API_URL = "https://script.google.com/macros/s/AKfycbxRCa8n-yrZTWNDI63MQDuoWx5G_X_oFyQrk0VAQ_PwAoPCrVN-YSKLYhreyniH8vqDcg/exec"; // 務必替換
+    const canvas = document.getElementById('pCanvas');
+    const ctx = canvas.getContext('2d');
+    let currentLv = 1, drawings = [], painting = false;
+    
+    // 行為追蹤數據
+    let behavior = { total_strokes: 0, color_changes: 0, start_time: null };
+    let strokeCount = 0;
 
-        function getPos(e) {
-            const r = canvas.getBoundingClientRect();
-            const x = e.clientX || e.touches[0].clientX;
-            const y = e.clientY || e.touches[0].clientY;
-            return { x: x - r.left, y: y - r.top };
+    function startExp() {
+        if(!document.getElementById('stuId').value) return alert("請填寫學號");
+        document.getElementById('step1').classList.add('hidden');
+        document.getElementById('step2').classList.remove('hidden');
+        behavior.start_time = Date.now();
+    }
+
+    function getPos(e) {
+        const r = canvas.getBoundingClientRect();
+        const x = (e.clientX || e.touches[0].clientX) - r.left;
+        const y = (e.clientY || e.touches[0].clientY) - r.top;
+        return { x, y };
+    }
+
+    canvas.addEventListener('mousedown', startStroke);
+    canvas.addEventListener('touchstart', startStroke);
+    window.addEventListener('mouseup', () => painting = false);
+    window.addEventListener('touchend', () => painting = false);
+    canvas.addEventListener('mousemove', moveStroke);
+    canvas.addEventListener('touchmove', moveStroke);
+
+    function startStroke(e) {
+        painting = true;
+        strokeCount++;
+        behavior.total_strokes++;
+        ctx.beginPath();
+        const p = getPos(e);
+        ctx.moveTo(p.x, p.y);
+    }
+
+    function moveStroke(e) {
+        if(!painting) return;
+        const p = getPos(e);
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = document.getElementById('color').value;
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+    }
+
+    function logColorChange() { behavior.color_changes++; }
+    function clearC() { ctx.clearRect(0, 0, 400, 400); }
+
+    async function saveNext() {
+        const desc = document.getElementById('painDesc').value;
+        drawings.push({ 
+            level: currentLv, 
+            image: canvas.toDataURL(), 
+            desc: desc,
+            strokes: strokeCount // 單一等級的筆觸數
+        });
+        
+        strokeCount = 0; // 重置單級筆觸
+        document.getElementById('painDesc').value = "";
+
+        if (currentLv < 10) {
+            currentLv++;
+            document.getElementById('status').innerText = `當前疼痛等級：${currentLv} / 10`;
+            clearC();
+        } else {
+            submitData();
         }
-        function start(e) { painting = true; ctx.beginPath(); const p = getPos(e); ctx.moveTo(p.x, p.y); }
-        function move(e) { 
-            if(!painting) return; const p = getPos(e);
-            ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.strokeStyle = document.getElementById('color').value;
-            ctx.lineTo(p.x, p.y); ctx.stroke();
-        }
-        canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', move); window.addEventListener('mouseup', () => painting = false);
-        canvas.addEventListener('touchstart', start); canvas.addEventListener('touchmove', move); canvas.addEventListener('touchend', () => painting = false);
+    }
 
-        function clearC() { ctx.clearRect(0, 0, 400, 400); }
-
-        async function saveNext() {
-            drawings.push({ level: currentLv, image: canvas.toDataURL("image/png") });
-            if (currentLv < 10) {
-                currentLv++;
-                document.getElementById('status').innerText = `疼痛等級：${currentLv} / 10`;
-                clearC();
-                if(currentLv === 10) document.getElementById('nextBtn').innerText = "提交實驗數據";
-            } else {
-                const sid = prompt("實驗完成！請輸入學號：");
-                if(!sid) return;
-                document.getElementById('nextBtn').disabled = true;
-                document.getElementById('nextBtn').innerText = "傳送中...";
-                
-                await fetch(API_URL, {
-                    method: 'POST',
-                    mode: 'no-cors', // 解決跨網域問題
-                    body: JSON.stringify({ student_id: sid, drawings: drawings })
-                });
-                
-                alert("數據已同步至 Google 表格！");
-                location.reload();
+    async function submitData() {
+        const btn = document.getElementById('nextBtn');
+        btn.disabled = true;
+        btn.innerText = "傳送中...";
+        
+        const payload = {
+            student_id: document.getElementById('stuId').value,
+            gender: document.getElementById('gender').value,
+            age: document.getElementById('age').value,
+            description: "Total Experiment Data",
+            drawings: drawings,
+            behavior_log: {
+                ...behavior,
+                end_time: Date.now(),
+                duration_sec: (Date.now() - behavior.start_time) / 1000
             }
-        }
-    </script>
+        };
+
+        await fetch(API_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            body: JSON.stringify(payload)
+        });
+
+        alert("感謝！您的繪圖紀錄與行為數據已完整同步。");
+        location.reload();
+    }
+</script>
 </body>
 </html>
