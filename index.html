@@ -5,82 +5,92 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>專業疼痛視覺化實驗</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #eceff1; margin: 0; padding: 20px; }
-        .card { background: white; max-width: 550px; margin: auto; padding: 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        body { font-family: 'PingFang TC', 'Heiti TC', sans-serif; background: #f0f2f5; margin: 0; padding: 15px; }
+        .card { background: white; max-width: 500px; margin: auto; padding: 25px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
         .hidden { display: none; }
-        canvas { border: 2px solid #263238; background: #fff; border-radius: 12px; width: 100%; touch-action: none; }
-        input, select, textarea { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #cfd8dc; border-radius: 8px; box-sizing: border-box; }
-        button { background: #1e88e5; color: white; border: none; padding: 15px 30px; border-radius: 10px; cursor: pointer; width: 100%; font-size: 16px; font-weight: bold; }
-        .lv-info { font-size: 20px; color: #d32f2f; margin-bottom: 10px; }
+        h2 { color: #2c3e50; font-size: 1.5rem; margin-top: 0; }
+        canvas { border: 2px solid #333; background: #fff; border-radius: 12px; width: 100%; touch-action: none; cursor: crosshair; }
+        
+        /* 表單樣式 */
+        input[type="text"], input[type="number"], select, textarea { 
+            width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; box-sizing: border-box; 
+        }
+        
+        /* 顏色選擇器改回方塊感 */
+        .color-box { width: 60px; height: 45px; border: 2px solid #ddd; border-radius: 8px; cursor: pointer; padding: 2px; }
+        
+        .btn-group { display: flex; gap: 10px; margin: 15px 0; }
+        button { flex: 1; padding: 15px; font-size: 16px; font-weight: bold; border-radius: 10px; border: none; cursor: pointer; transition: 0.2s; }
+        .btn-main { background: #007aff; color: white; }
+        .btn-clear { background: #e0e0e0; color: #333; }
+        button:disabled { background: #ccc; }
+        
+        .lv-info { font-size: 22px; color: #ff3b30; font-weight: bold; margin-bottom: 10px; }
+        .required { color: #ff3b30; font-size: 14px; text-align: left; display: block; }
     </style>
 </head>
 <body>
 
 <div class="card" id="step1">
     <h2>實驗基本資料</h2>
-    <input type="text" id="stuId" placeholder="學號">
+    <input type="text" id="stuId" placeholder="學號/編號 (必填)">
     <select id="gender">
-        <option value="">請選擇性別</option>
+        <option value="">選擇性別 (必填)</option>
         <option value="Male">男</option>
         <option value="Female">女</option>
         <option value="Other">其他</option>
     </select>
-    <input type="number" id="age" placeholder="年齡">
-    <button onclick="startExp()">開始實驗</button>
+    <input type="number" id="age" placeholder="年齡 (必填)">
+    <button class="btn-main" onclick="startExp()">進入實驗</button>
 </div>
 
 <div class="card hidden" id="step2">
     <div class="lv-info" id="status">當前疼痛等級：1 / 10</div>
     <canvas id="pCanvas" width="400" height="400"></canvas>
-    <div style="margin: 15px 0; display: flex; gap: 10px;">
-        <input type="color" id="color" value="#ff0000" onchange="logColorChange()">
-        <button style="background:#78909c" onclick="clearC()">清空</button>
-        <button onclick="saveNext()" id="nextBtn">下一級</button>
+    
+    <div class="btn-group">
+        <input type="color" id="color" class="color-box" value="#ff3b30" onchange="behavior.color_changes++">
+        <button class="btn-clear" onclick="clearC()">清空重畫</button>
+        <button class="btn-main" onclick="saveNext()" id="nextBtn">下一級</button>
     </div>
-    <textarea id="painDesc" placeholder="請簡單描述此等級的疼痛感（如：像針扎、灼熱感...）"></textarea>
+    
+    <span class="required">* 疼痛感描述 (必填)：</span>
+    <textarea id="painDesc" rows="3" placeholder="請描述此強度的疼痛感受（例如：尖銳、悶痛、像被擠壓...）"></textarea>
 </div>
 
 <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbxRCa8n-yrZTWNDI63MQDuoWx5G_X_oFyQrk0VAQ_PwAoPCrVN-YSKLYhreyniH8vqDcg/exec"; // 務必替換
+    const API_URL = "你的_GOOGLE_DEPLOY_URL"; // 這裡請貼上你的 Google 腳本網址
     const canvas = document.getElementById('pCanvas');
     const ctx = canvas.getContext('2d');
     let currentLv = 1, drawings = [], painting = false;
-    
-    // 行為追蹤數據
     let behavior = { total_strokes: 0, color_changes: 0, start_time: null };
-    let strokeCount = 0;
 
     function startExp() {
-        if(!document.getElementById('stuId').value) return alert("請填寫學號");
+        if(!document.getElementById('stuId').value || !document.getElementById('gender').value || !document.getElementById('age').value) {
+            return alert("請填妥所有基本資料！");
+        }
         document.getElementById('step1').classList.add('hidden');
         document.getElementById('step2').classList.remove('hidden');
         behavior.start_time = Date.now();
     }
 
+    // 繪圖邏輯
     function getPos(e) {
         const r = canvas.getBoundingClientRect();
         const x = (e.clientX || e.touches[0].clientX) - r.left;
         const y = (e.clientY || e.touches[0].clientY) - r.top;
-        return { x, y };
+        return { x: x * (canvas.width / r.width), y: y * (canvas.height / r.height) };
     }
 
-    canvas.addEventListener('mousedown', startStroke);
-    canvas.addEventListener('touchstart', startStroke);
-    window.addEventListener('mouseup', () => painting = false);
-    window.addEventListener('touchend', () => painting = false);
-    canvas.addEventListener('mousemove', moveStroke);
-    canvas.addEventListener('touchmove', moveStroke);
-
-    function startStroke(e) {
+    function startDraw(e) {
         painting = true;
-        strokeCount++;
         behavior.total_strokes++;
         ctx.beginPath();
         const p = getPos(e);
         ctx.moveTo(p.x, p.y);
     }
 
-    function moveStroke(e) {
+    function moveDraw(e) {
         if(!painting) return;
         const p = getPos(e);
         ctx.lineWidth = 4;
@@ -90,40 +100,45 @@
         ctx.stroke();
     }
 
-    function logColorChange() { behavior.color_changes++; }
-    function clearC() { ctx.clearRect(0, 0, 400, 400); }
+    canvas.addEventListener('mousedown', startDraw);
+    canvas.addEventListener('touchstart', startDraw);
+    canvas.addEventListener('mousemove', moveDraw);
+    canvas.addEventListener('touchmove', moveDraw);
+    window.addEventListener('mouseup', () => painting = false);
+    window.addEventListener('touchend', () => painting = false);
+
+    function clearC() { ctx.clearRect(0, 0, canvas.width, canvas.height); }
 
     async function saveNext() {
-        const desc = document.getElementById('painDesc').value;
+        const desc = document.getElementById('painDesc').value.trim();
+        if(!desc) return alert("請填寫對此疼痛等級的描述！");
+
         drawings.push({ 
             level: currentLv, 
-            image: canvas.toDataURL(), 
-            desc: desc,
-            strokes: strokeCount // 單一等級的筆觸數
+            image: canvas.toDataURL("image/png"), 
+            desc: desc 
         });
-        
-        strokeCount = 0; // 重置單級筆觸
-        document.getElementById('painDesc').value = "";
 
         if (currentLv < 10) {
             currentLv++;
             document.getElementById('status').innerText = `當前疼痛等級：${currentLv} / 10`;
+            document.getElementById('painDesc').value = "";
             clearC();
+            if(currentLv === 10) document.getElementById('nextBtn').innerText = "上傳完整數據";
         } else {
-            submitData();
+            submitFinal();
         }
     }
 
-    async function submitData() {
+    async function submitFinal() {
         const btn = document.getElementById('nextBtn');
         btn.disabled = true;
         btn.innerText = "傳送中...";
-        
+
         const payload = {
             student_id: document.getElementById('stuId').value,
             gender: document.getElementById('gender').value,
             age: document.getElementById('age').value,
-            description: "Total Experiment Data",
             drawings: drawings,
             behavior_log: {
                 ...behavior,
@@ -132,14 +147,19 @@
             }
         };
 
-        await fetch(API_URL, {
-            method: 'POST',
-            mode: 'no-cors',
-            body: JSON.stringify(payload)
-        });
-
-        alert("感謝！您的繪圖紀錄與行為數據已完整同步。");
-        location.reload();
+        try {
+            await fetch(API_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                body: JSON.stringify(payload)
+            });
+            alert("實驗完成！數據已同步至雲端。");
+            location.reload();
+        } catch (e) {
+            alert("傳送失敗，請檢查網路！");
+            btn.disabled = false;
+            btn.innerText = "重新提交";
+        }
     }
 </script>
 </body>
