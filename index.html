@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>疼痛視覺化實驗</title>
+    <style>
+        body { font-family: sans-serif; background: #eee; margin: 0; display: flex; justify-content: center; }
+        #app { background: white; width: 100%; max-width: 500px; padding: 20px; text-align: center; min-height: 100vh; }
+        canvas { border: 3px solid #333; background: #fff; border-radius: 10px; width: 100%; touch-action: none; cursor: crosshair; }
+        .lv-title { font-size: 24px; color: #ff4757; font-weight: bold; margin: 15px 0; }
+        .controls { margin: 15px 0; display: flex; justify-content: space-around; align-items: center; }
+        button { padding: 12px 25px; font-size: 16px; cursor: pointer; border-radius: 8px; border: none; background: #3498db; color: white; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="lv-title" id="status">疼痛等級：1 / 10</div>
+        <canvas id="pCanvas" width="400" height="400"></canvas>
+        <div class="controls">
+            <input type="color" id="color" value="#ff4757" style="height:45px; width:60px;">
+            <button onclick="clearC()">清除</button>
+            <button id="nextBtn" onclick="saveNext()">下一級</button>
+        </div>
+        <p>請繪製對應等級的痛覺視覺影像</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('pCanvas');
+        const ctx = canvas.getContext('2d');
+        let currentLv = 1, drawings = [], painting = false;
+        // 【重要】這裡填入你的 Google 部署網址
+        const API_URL = "https://script.google.com/macros/s/AKfycbwZQ6WtBCGMgqxZe9vHCio_XCtagIi13V2lIw9cU_-TMrTpkTCYxt1DdIrF5KvIEfLBoQ/exec"; 
+
+        function getPos(e) {
+            const r = canvas.getBoundingClientRect();
+            const x = e.clientX || e.touches[0].clientX;
+            const y = e.clientY || e.touches[0].clientY;
+            return { x: x - r.left, y: y - r.top };
+        }
+        function start(e) { painting = true; ctx.beginPath(); const p = getPos(e); ctx.moveTo(p.x, p.y); }
+        function move(e) { 
+            if(!painting) return; const p = getPos(e);
+            ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.strokeStyle = document.getElementById('color').value;
+            ctx.lineTo(p.x, p.y); ctx.stroke();
+        }
+        canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', move); window.addEventListener('mouseup', () => painting = false);
+        canvas.addEventListener('touchstart', start); canvas.addEventListener('touchmove', move); canvas.addEventListener('touchend', () => painting = false);
+
+        function clearC() { ctx.clearRect(0, 0, 400, 400); }
+
+        async function saveNext() {
+            drawings.push({ level: currentLv, image: canvas.toDataURL("image/png") });
+            if (currentLv < 10) {
+                currentLv++;
+                document.getElementById('status').innerText = `疼痛等級：${currentLv} / 10`;
+                clearC();
+                if(currentLv === 10) document.getElementById('nextBtn').innerText = "提交實驗數據";
+            } else {
+                const sid = prompt("實驗完成！請輸入學號：");
+                if(!sid) return;
+                document.getElementById('nextBtn').disabled = true;
+                document.getElementById('nextBtn').innerText = "傳送中...";
+                
+                await fetch(API_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', // 解決跨網域問題
+                    body: JSON.stringify({ student_id: sid, drawings: drawings })
+                });
+                
+                alert("數據已同步至 Google 表格！");
+                location.reload();
+            }
+        }
+    </script>
+</body>
+</html>
